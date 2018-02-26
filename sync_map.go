@@ -6,7 +6,7 @@ import (
 	"unsafe"
 )
 
-type Map struct {
+type SyncMap struct {
 	mu     sync.Mutex
 	read   atomic.Value
 	dirty  map[interface{}]*entry
@@ -29,7 +29,7 @@ func newEntry(i interface{}) *entry {
 	return &entry{p: unsafe.Pointer(&i)}
 }
 
-func (m *Map) Load(key interface{}) (value interface{}, ok bool) {
+func (m *SyncMap) Load(key interface{}) (value interface{}, ok bool) {
 	// 获得readonly
 	read, _ := m.read.Load().(readOnly)
 	// 如果readonly里面有值 直接 返回
@@ -62,11 +62,11 @@ func (e *entry) load() (value interface{}, ok bool) {
 	return *(*interface{})(p), true
 }
 
-func (m *Map) Size() uint64 {
+func (m *SyncMap) Size() uint64 {
 	return atomic.LoadUint64(&m.size)
 }
 
-func (m *Map) Store(key, value interface{}) {
+func (m *SyncMap) Store(key, value interface{}) {
 	// 获取readonly
 	read, _ := m.read.Load().(readOnly)
 	// 从readonly中判断 key 是否存在
@@ -128,7 +128,7 @@ func (e *entry) storeLocked(i *interface{}) {
 	atomic.StorePointer(&e.p, unsafe.Pointer(i))
 }
 
-func (m *Map) LoadOrStore(key, value interface{}) (actual interface{}, loaded bool) {
+func (m *SyncMap) LoadOrStore(key, value interface{}) (actual interface{}, loaded bool) {
 	read, _ := m.read.Load().(readOnly)
 	if e, ok := read.m[key]; ok {
 		actual, loaded, ok := e.tryLoadOrStore(value)
@@ -183,7 +183,7 @@ func (e *entry) tryLoadOrStore(i interface{}) (actual interface{}, loaded, ok bo
 	}
 }
 
-func (m *Map) Delete(key interface{}) (deleted bool) {
+func (m *SyncMap) Delete(key interface{}) (deleted bool) {
 	read, _ := m.read.Load().(readOnly)
 	e, ok := read.m[key]
 	if !ok && read.amended {
@@ -218,7 +218,7 @@ func (e *entry) delete() (hadValue bool) {
 	}
 }
 
-func (m *Map) Range(f func(key, value interface{}) bool) {
+func (m *SyncMap) Range(f func(key, value interface{}) bool) {
 	read, _ := m.read.Load().(readOnly)
 	if read.amended {
 		m.mu.Lock()
@@ -243,7 +243,7 @@ func (m *Map) Range(f func(key, value interface{}) bool) {
 	}
 }
 
-func (m *Map) missLocked() {
+func (m *SyncMap) missLocked() {
 	m.misses++
 	if m.misses < len(m.dirty) {
 		return
@@ -253,7 +253,7 @@ func (m *Map) missLocked() {
 	m.misses = 0
 }
 
-func (m *Map) dirtyLocked() {
+func (m *SyncMap) dirtyLocked() {
 	if m.dirty != nil {
 		return
 	}
